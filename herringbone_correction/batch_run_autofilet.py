@@ -152,16 +152,20 @@ def autofilet():
         #write information to inventory file
         inventory = write_inventory(ifile, inventory, xord, yord, ext_array)
         #Loop over science extensions in each file
-
+        orig_xord = xord
+        orig_yord = yord
         for extn in ext_array:
+            xord = orig_xord
+            yord = orig_yord
             success = False       
-            nloop = 1
+            nloop = 0
             output_file = ifile.replace('ORIG', 'PSUB').replace('raw', 'rwc_%i' %(extn)).replace('wav', 'wav_rwc_%i'%(extn))
             if not os.path.exists(output_file):
                 
                 table_file = ifile.replace('ORIG', 'TABLES').replace('raw.fits', 'fps_%i' %(extn)).replace('wav.fits', 'wav_fps_%i'%(extn)) 
                 #Call IDL routine autofilet with the appropriate inputs
                 while not success:
+                    nloop += 1
                     sys.stdout = autofilet_log
                     write_idl_file(ifile, output_file, table_file, extn, xord, yord)
                     autofilet_call = subprocess.Popen('/grp/software/Linux/itt/idl/idl81/bin/idl -quiet tmp_idl.pro', shell = True) 
@@ -227,7 +231,10 @@ def autofilet():
                             autofilet_log.write('\tTrying again with xord = %i, yord = %i. \n' %(xord, yord))
                             autofilet_log.flush()
                             success = False
+                            print 'while_loop', nloop, ifile, extn, xord, yord
+                        
                         else :
+                            print 'else_loop', nloop, ifile, extn, xord, yord
                             success = True
                     autofilet_call.wait()
 
@@ -256,34 +263,44 @@ def build_inventory():
     new_image_flag = True
     indx = 0
     new_run_indices = np.where(np.array(all_lines) == 'NEW RUN STARTS HERE\n')
-    if len(new_run_indices) < 1:
-        new_run_indx == 0
+    if len(new_run_indices[0]) < 1:
+        new_run_indx = 0
     else:
         new_run_indx = new_run_indices[0][-1]
-
+    log_dict = {}
+    termination_flag = False
     for iline in all_lines[new_run_indx:]:
         if 'image=' in iline:
             new_image_flag = True
-            tmp_rootname = iline.split('=')[1][5:-11]  #get just the rootname
+            tmp_rootname = iline.split('=')[1][5:-11].strip('_')  #get just the rootname
             tmp_ext = iline.split('=')[1].split('[')[1]
             tmp_warning = False #initialize to False, change if a warning is encountered
+            termination_flag = False
         elif ('VERIFIED' in iline) & (new_image_flag == True):
             tmp_warning = True
             new_image_flag = False
-        elif ('elapsed' in iline): #processing finished normally
+        elif (('elapsed' in iline) & (not termination_flag)): #processing finished normally
+            if tmp_rootname not in log_dict.keys():
+                log_dict[tmp_rootname] = {'ext':[], 'warning':[]}
+            log_dict[tmp_rootname]['ext'].append(tmp_ext)
+            log_dict[tmp_rootname]['warning'].append(tmp_warning)
             warning[indx] = tmp_warning
             extn[indx] = tmp_ext
             indx += 1
 
         elif ('ERROR' in iline):
-            print iline
-    warning = np.array([bool(warn) for warn in warning])
-    extn = np.array(extn)
-    rootname = np.array(rootname)
+            print 'ERROR found in log file:'
+            print '\t', iline
+            termination_flag = True
+    #warning = np.array([bool(warn) for warn in warning])
+    #extn = np.array(extn)
+    #rootname = np.array(rootname)
     if indx != len(rootname):
         print '!!!!!!!!!!!!!!!!\nWARNING, there are %i files in PSUB, but only %i are being rebuilt\n!!!!!!!!!!!!!!!!' %(len(rootname), indx)
-    return rootname, extn, warning
 
+    #pdb.set_trace()
+    #return rootname, extn, warning
+    return log_dict
             
        
 def rebuild_files(interactive = False, failed_files = []):
@@ -325,9 +342,10 @@ def rebuild_files(interactive = False, failed_files = []):
         print 'WARNING: this script assumes that you have verified the correction in all images not listed in failed_files'
 
     #get information for autofilet.log
-    rootname, extn, warning = build_inventory()
+    #rootname, extn, warning = build_inventory()
+    log_dict = build_inventory()
     #create a list of unique dataset names
-    uniq_rootname = list(set(rootname))
+    #uniq_rootname = list(set(rootname))
     #create output file directories
     if not os.path.exists('FAILED'):
         os.mkdir('FAILED')
@@ -336,13 +354,18 @@ def rebuild_files(interactive = False, failed_files = []):
     #Open file to record list of files which will be determined to have failed fits
     failed_list = open('FAILED/failed_list.txt', 'w')
     #Loop over each dataset name (this is of the raw files)
-    for indiv_file in uniq_rootname:
+    #for indiv_file in uniq_rootname:
+    for indiv_file in log_dict.keys():
+        print 'rebuilding ', indiv_file
         #Find all entries which correspond to that dataset (multiple imsets)
-        indx = np.where(rootname == indiv_file)[0]
+        #indx = np.where(rootname == indiv_file)[0]
+        #sort_indx = np.argsort(extn[indx])
         #interactively check the pattern removal of all files which require verification from autofilet.log
         #If verified, then modify warning to keep them
         #if not verified, then put them on the failed list and copy them to the FAILED directory
-        for i, warn, ext in zip(indx, warning[indx], extn[indx]):
+        for i, warn, ext in zip(range(len(log_dict[indiv_file]['ext'])), log_dict[indiv_file]['warning'], log_dict[indiv_file]['ext']):
+            ext = int(ext)
+            print '\t extn ', ext
             #pdb.set_trace()
             if warn == True:  #a warning exists for this file
                 if interactive == True:
@@ -351,17 +374,18 @@ def rebuild_files(interactive = False, failed_files = []):
                     if not_reviewed == False:
                         keep_file = raw_input('Is the herring bone pattern removed from this file? (y, n) ')
                         if keep_file == 'y':
-                            warning[i] = False  #reset warning if pattern removal is verified
+                            log_dict[indiv_file]['warning'][i] = False  #reset warning if pattern removal is verified
                         else: #copy file to failed and add to failed list
                             shutil.copyfile('PSUB/%s_rwc_%i.fits' %(indiv_file, ext), 'FAILED/%s_rwc_%i.fits' %(indiv_file, ext))
                             failed_list.write('%s_rwc_%i.fits\n'  %(indiv_file, ext))
 
                     else:
-                        warning[i] = False
+                        log_dict[indiv_file]['warning'][i] = False
                     
                 else: #if interactive is False check input list of failed files, and if it is not in the list, then reset then remove the warning
+
                     if ('%s_rwc_%i.fits' %(indiv_file, ext) not in failed_files) &  ('%s_wav_rwc_%i.fits' %(indiv_file, ext) not in failed_files):
-                        warning[i] = False
+                        log_dict[indiv_file]['warning'][i] = False
                     else: #copy file to failed and add to failed list
                         shutil.copyfile('PSUB/%s_rwc_%i.fits' %(indiv_file, ext), 'FAILED/%s_rwc_%i.fits' %(indiv_file, ext))
                         failed_list.write('%s_rwc_%i.fits\n'  %(indiv_file, ext))
@@ -371,18 +395,21 @@ def rebuild_files(interactive = False, failed_files = []):
         #--------------------------
         #Copy the file and open in update mode
         
-        try: #if the file is not a wavecal
+        try: #if the file is not a wavecal 
             shutil.copyfile('ORIG/%s_raw.fits' %(indiv_file), 'CLEAN/%s_raw.fits' %(indiv_file))
             ofile = pyfits.open('CLEAN/%s_raw.fits' %(indiv_file), mode = 'update') 
             wave = False
         except: #if the file is a wavecal
-            shutil.copyfile('ORIG/%s.fits' %(indiv_file), 'CLEAN/%s.fits' %(indiv_file))
-            ofile = pyfits.open('CLEAN/%s.fits' %(indiv_file), mode = 'update')
+            pdb.set_trace()
+            shutil.copyfile('ORIG/%s_wav.fits' %(indiv_file), 'CLEAN/%s_wav.fits' %(indiv_file))
+            ofile = pyfits.open('CLEAN/%s_wav.fits' %(indiv_file), mode = 'update')
             wave = True
-
+            
         #Loop over all imsets in each file
         ofile[0].header.set('HPATCORR', 'COMPLETE', 'remove herring-bone pattern noise', before = 'DQICORR')
-        for i, warn, ext in zip(range(len(indx)), warning[indx], extn[indx]):
+        
+        #for i, warn, ext in zip(range(len(indx)), warning[indx], extn[indx]):
+        for i, warn, ext in zip(range(len(log_dict[indiv_file]['ext'])), log_dict[indiv_file]['warning'], log_dict[indiv_file]['ext']):
             #Add new header group to each extension
             ext = int(ext)
             ofile[ext].header.set('   ', '/HERRINGBONE PATTERN NOISE REMOVAL INFORMATION', after = 'MEANBLEV')
