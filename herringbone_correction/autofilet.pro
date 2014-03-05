@@ -271,7 +271,7 @@ print,' '
 print,'# AUTOFILET: '+SYSTIME(/UTC)
 print,'  image=',image,cxtn,'[',ncol,',',nrow,']: ',targ,$
       '  amp="',amp,'"  gain=',gain,f='(a,a,a,a,i4,a,i4,a,a,a,a,a,f4.2)'
-
+FLUSH, 25
 
 ; ----------------------------------------------------------------------
 
@@ -281,6 +281,7 @@ IF (instrume EQ "STIS") THEN BEGIN
    IF (xtn NE "[SCI]") THEN BEGIN
       printf,25,'ERROR: not a science [SCI] extension!'
       print,'ERROR: not a science [SCI] extension!'
+      FLUSH, 25
       RETURN
    ENDIF
 
@@ -293,6 +294,7 @@ IF (instrume EQ "STIS") THEN BEGIN
       ENDIF ELSE BEGIN
          printf,25,'ERROR: neither 1062x1044 (raw) nor 1024x1024 (flt)!'
          print,'ERROR: neither 1062x1044 (raw) nor 1024x1024 (flt)!'
+         FLUSH, 25
          RETURN
       ENDELSE
    ENDELSE
@@ -301,6 +303,7 @@ IF (instrume EQ "STIS") THEN BEGIN
    IF (type EQ "flt") THEN BEGIN
       printf,25,'  padding ',image,' with "overscan" strips...'
       print,'  padding ',image,' with "overscan" strips...'
+      FLUSH, 25
       tmp = FLTARR(nc0,nxy)
       FOR row=0,nxy-1 DO tmp[*,row] = MEDIAN(img[*,row],/EVEN)
       tmp[nos:(nc0-nos-1),*] = img
@@ -331,6 +334,7 @@ IF (instrume EQ "STIS") THEN BEGIN
       ; if CCDAMP keyword is missing:
       printf,25,'ERROR: no amplifier specified in header!'
       print,'ERROR: no amplifier specified in header!'
+      FLUSH, 25
       RETURN
    ENDIF
 ENDIF
@@ -348,6 +352,7 @@ IF (instrume EQ "FAST") THEN BEGIN
          printf,25,'       the CCD was binned in y on read-out. If so, edit script.'
          print,'ERROR: neither 2720x512 (raw) nor 2688x480 (trimmed)! Perhaps'
          print,'       the CCD was binned in y on read-out. If so, edit script.'
+         FLUSH, 25
          RETURN
       ENDELSE
    ENDELSE
@@ -356,6 +361,7 @@ IF (instrume EQ "FAST") THEN BEGIN
    IF (type EQ "trimmed") THEN BEGIN
       printf,25,'  padding ',image,' with "overscan" strips...'
       print,'  padding ',image,' with "overscan" strips...'
+      FLUSH, 25
       tmp = FLTARR(nc0,nyy)
       FOR row=0,nyy-1 DO tmp[*,row] = MEDIAN(img[*,row],/EVEN)
       tmp[nos:(nc0-nos-1),*] = img
@@ -377,11 +383,12 @@ ENDIF
 ; residuals image contains only shotnoise and the herring-bone pattern.
 printf,25,'  constructing data model...'
 print,'  constructing data model...'
+FLUSH, 25
 model = img*0.0
 
 printf,25,'    fitting along columns: yorder=',yorder,' ...',f='(a,i2,a)'
 print,'    fitting along columns: yorder=',yorder,' ...',f='(a,i2,a)'
-
+FLUSH, 25
 ; transpose: swap x and y...
 tmodel = TRANSPOSE(model)
 timg   = TRANSPOSE(img)
@@ -432,7 +439,7 @@ img   = TRANSPOSE(timg)
 
 printf,25,'    fitting along rows:    xorder=',xorder,' ...',f='(a,i2,a)'
 print,'    fitting along rows:    xorder=',xorder,' ...',f='(a,i2,a)'
-
+FLUSH, 25
 xbuf = indgen(ncol)
 print,'    ',f='(a,$)'
 FOR row=0,nrow-1 DO BEGIN
@@ -497,7 +504,7 @@ printf,25,'    filtering pixels deviating more than ',scut,$
 	'* sigma  [sigma =',rms,'] ...',f='(a,f4.1,a,f7.4,a)'
 print,'    filtering pixels deviating more than ',scut,$
 	'* sigma  [sigma =',rms,'] ...',f='(a,f4.1,a,f7.4,a)'
-
+FLUSH, 25
 ix = WHERE(ABS(img) GT (scut*rms),ixn)
 iy = WHERE((ABS(img) GT (scnb*rms) AND ABS(img) LE (scut*rms)),iyn)
 
@@ -519,6 +526,7 @@ IF (ixn NE 0) THEN BEGIN
 
    printf,25,'      rejected ',ixn,' significantly deviant pixels',f='(a,i6,a)'
    print,'      rejected ',ixn,' significantly deviant pixels',f='(a,i6,a)'
+   FLUSH, 25
 ENDIF
 
 IF (iyn NE 0 AND ixn NE 0) THEN BEGIN
@@ -535,6 +543,7 @@ IF (iyn NE 0 AND ixn NE 0) THEN BEGIN
 		f='(a,i6,a)'
       print,'      rejected ',izn,' neighbors of significantly deviant pixels',$
 		f='(a,i6,a)'
+      FLUSH, 25
    ENDIF
 ENDIF
 
@@ -545,6 +554,7 @@ ENDIF
 ; THE PARALLEL SHIFT BETWEEN READ-OUT OF INDIVIDUAL PIXEL COLUMNS...
 printf,25,'  converting 2-D image to 1-D time-series...'
 print,'  converting 2-D image to 1-D time-series...'
+FLUSH, 25
 nx = ncol + pps
 ; The non-integer nx prevents phase wandering (TMB).
 time_series = FLTARR(nx*nrow)
@@ -563,6 +573,7 @@ ENDFOR
 ; pixels for STIS CCD data.
 printf,25,'  generating power spectrum (forward FFT) ...'
 print,'  generating power spectrum (forward FFT) ...'
+FLUSH, 25
 IF (keyword_set(debug)) THEN TF0 = SYSTIME(1)
 nt = N_ELEMENTS(time_series)
 IF ((nt MOD 2L) EQ 1) THEN BEGIN
@@ -628,6 +639,7 @@ omagnitude = magn
 ; PEAK PROFILE. The search interval is restricted by 'freq1' and 'freq2'.
 printf,25,'  fitting the peak corresponding to the herring-bone pattern...'
 print,'  fitting the peak corresponding to the herring-bone pattern...'
+FLUSH, 25
 ; estimate of width of peak - change for other data
 IF (telescop EQ "HST" AND instrume EQ "STIS") THEN psig = 5.5
 IF (telescop EQ "TILLINGHAST" AND instrume EQ "FAST") THEN psig = X.X
@@ -655,7 +667,7 @@ print,'    Gaussian:  ampl=',coefs[0],',  cntr=',coefs[1],$
 	' Hz,  sigm=',coefs[2],' Hz',f='(a,f11.4,a,f11.4,a,f11.4,a)'
 print,'    Backgrnd:  mean=',coefs[3],',  tilt=',coefs[4],$
 	'      curv=',coefs[5],'   ',f='(a,f11.6,a,f11.8,a,f11.8,a)'
-
+FLUSH, 25
 
 ; ----------------------------------------------------------------------
 
@@ -684,32 +696,41 @@ IF ((ABS(pamp-0.12) GT 0.10) OR (pamp LT 0.01)) THEN aflag = 1
 IF ((fflag GT 0) OR (aflag GT 0) OR (wflag GT 0)) THEN BEGIN
    printf,25,'    WARNING: anomalous pattern in '+image+'['+STRTRIM(exten,2)+']'+'  VERIFIED=NO  GENUINE=UNKNOWN',f='(a)'
    print,'    WARNING: anomalous pattern in '+image+'['+STRTRIM(exten,2)+']'
+   FLUSH, 25
    IF (fflag GT 0) THEN BEGIN
       IF ( (rfrq-frq0) LT 0 ) THEN BEGIN
          printf,25,'    WARNING:   frequency < ',(frq0-1400),' Hz',f='(a,f7.1,a)'
+         FLUSH, 25
       ENDIF ELSE BEGIN
          printf,25,'    WARNING:   frequency > ',(frq0+1400),' Hz',f='(a,f7.1,a)'
+         FLUSH, 25
       ENDELSE
    ENDIF
    IF (wflag GT 0) THEN BEGIN
       IF ( dwdt LT 2.0 ) THEN BEGIN
          printf,25,'    WARNING:   driftwidth < 2.0 Hz  (too small)',f='(a)'
+         FLUSH, 25
       ENDIF ELSE BEGIN
          IF ( dwdt GT 16.0 ) THEN BEGIN
             printf,25,'    WARNING:   driftwidth > 16.0 Hz (too large?)',f='(a)'
+            FLUSH, 25
          ENDIF ELSE BEGIN
             printf,25,'    WARNING:   driftwidth < 3.0 Hz  (too small?)',f='(a)'
+            FLUSH, 25
          ENDELSE
       ENDELSE
    ENDIF
    IF (aflag GT 0) THEN BEGIN
       IF ( pamp LT 0.01 ) THEN BEGIN
          printf,25,'    WARNING:   amplitude < 0.01  (undetected?)',f='(a)'
+         FLUSH, 25
       ENDIF ELSE BEGIN
          IF ( pamp GT 0.22 ) THEN BEGIN
             printf,25,'    WARNING:   amplitude > 0.22  (too large?)',f='(a)'
+            FLUSH, 25
          ENDIF ELSE BEGIN
             printf,25,'    WARNING:   amplitude < 0.02  (too small?)',f='(a)'
+            FLUSH, 25
          ENDELSE
       ENDELSE
    ENDIF
@@ -727,6 +748,7 @@ ENDIF
 ;       a (top-hat or tapered) window function.
 printf,25,'  wiping frequencies responsible for herring-bone pattern...'
 print,'  wiping frequencies responsible for herring-bone pattern...'
+FLUSH, 25
 xlim = [(coefs[1]-3*coefs[2]),(coefs[1]+3*coefs[2])]
 xliml= [(coefs[1]-7*coefs[2]),(coefs[1]-4*coefs[2])]
 xlimh= [(coefs[1]+4*coefs[2]),(coefs[1]+7*coefs[2])]
@@ -749,7 +771,7 @@ fmagnitude = (ABS(filt))[0:(ntp/2-1)]
 ; write original and filtered power spectra and fit to output table...
 printf,25,'    saving original and filtered spectra to "'+fpspec+'"...'
 print,'    saving original and filtered spectra to "'+fpspec+'"...'
-
+FLUSH, 25
 ; write header of table with frequency power spectra...
 OPENW,26,fpspec
 printf,26,'# freq omagn fmagn coefs',f='(a)'
@@ -784,6 +806,7 @@ CLOSE,26,/FORCE
 ; PERFORM INVERSE FFT AND GENERATE RESULT (CLEANED) AND PATTERN IMAGES...
 printf,25,'  generating result and herring-bone pattern image (inverse FFT)...'
 print,'  generating result and herring-bone pattern image (inverse FFT)...'
+FLUSH, 25
 btran = FFT(filt,/INVERSE)
 ttf = (FLOAT(btran))[0:nt]
 ; generate output images...
@@ -861,6 +884,7 @@ SXADDPAR,newhead,'HISTORY',' HPATCORR Finished '+T1a
 
 printf,25,'  writing FITS image "',result,'"...'
 print,'  writing FITS image "',result,'"...'
+FLUSH, 25
 WRITEFITS,result,outimg,newhead
 
 
@@ -868,6 +892,7 @@ WRITEFITS,result,outimg,newhead
 IF (keyword_set(debug)) THEN BEGIN
    printf,25,'  exporting data model, residuals, and pattern-noise images...'
    print,'  exporting data model, residuals, and pattern-noise images...'
+   FLUSH, 25
    model = rotate(model,2)
    img   = rotate(img,2)
    tmpname = STRMID(result,0,STRPOS(result,'_'))+'_res_'+STRTRIM(STRING(exten),2)+'.fits'
@@ -894,7 +919,7 @@ T1 = SYSTIME(1)
 ; Closing message...
 printf,25,'  AUTOFILET: finished (elapsed time: ',(T1-T0),' sec).',f='(a,f7.2,a)'
 print,'  AUTOFILET: finished (elapsed time: ',(T1-T0),' sec).',f='(a,f7.2,a)'
-
+FLUSH, 25
 CLOSE,25,/ALL,/FORCE
 
 RETURN
