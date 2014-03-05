@@ -17,6 +17,9 @@ import argparse
 import herringbone_correction_confirmation_plots
 from herringbone_correction_confirmation_plots import create_pdfs
 
+
+
+
 def get_extn_nums(ifile):
     '''
     Get the numbers of the science extensions in a given file
@@ -172,7 +175,7 @@ def autofilet():
                     autofilet_call = subprocess.Popen('/grp/software/Linux/itt/idl/idl81/bin/idl -quiet tmp_idl.pro', shell = True) 
                     #sys.stdout = sys.__stdout__                
                     nwait = 0
-                    while autofilet_call.poll() is None:  #if the code hasn't finished in 3 minutes, terminate it 
+                    while (autofilet_call.poll() is None) and (nwait < 7):  #if the code hasn't finished in 3 minutes, terminate it 
                         time.sleep(30)
                         nwait += 1
                         if nwait == 7:
@@ -234,10 +237,7 @@ def autofilet():
                             autofilet_log.flush()
                             autofilet_log.close()
                             success = False
-                            print 'while_loop', nloop, ifile, extn, xord, yord
-                        
                         else :
-                            print 'else_loop', nloop, ifile, extn, xord, yord
                             success = True
                     autofilet_call.wait()
 
@@ -456,6 +456,7 @@ def rebuild_files(interactive = False, failed_files = []):
 #Write code to extract the names of files which fail execution - I'm not sure if I've done this
 #Check the IDL termination
 
+
 if __name__ == "__main__":
     '''
     This code replaces the directions in AAS_README in the stis2 folder from Rolf Jansen.
@@ -492,6 +493,5 @@ if __name__ == "__main__":
     if len(directory) < 2:
         directory = os.getcwd()
     os.chdir(directory)
-
     autofilet()
     rebuild_files(interactive = interactive)
