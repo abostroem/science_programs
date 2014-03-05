@@ -493,5 +493,9 @@ if __name__ == "__main__":
     if len(directory) < 2:
         directory = os.getcwd()
     os.chdir(directory)
+    if not os.path.exists('TABLES'):
+        os.mkdir('TABLES')
+    if not os.path.exists('PSUB'):
+        os.mkdir('PSUB')
     autofilet()
     rebuild_files(interactive = interactive)
