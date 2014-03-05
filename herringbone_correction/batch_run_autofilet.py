@@ -120,6 +120,7 @@ def autofilet():
         autofilet_log.flush()
     else:
         autofilet_log = open('autofilet.log', 'w', 0)
+    autofilet_log.close
     #Open inventory file
     if os.path.exists('inventory.txt'):
         inventory = open('inventory.txt', 'a')
@@ -131,7 +132,7 @@ def autofilet():
     inventory.write("# root_typ.fits[extn] [YYYY-MM-DDThh:mm:ss] [sec][e/adu][pixels]                       [\AA] [\AA]                                            [deg]      [deg]     [deg]      [deg]      [deg]      [deg]      [deg]       [deg]       [deg]     [deg C]\n") 
     inventory.write("#========================================================================================================================================================================================================================================================\n")
     #Loop over all raw files
-    
+    ()
     for ifile in orig_list[::-1]:
         ext_array = get_extn_nums(ifile) #get the ext numbers of the science extensions; it is assumed that this is every third one starting with 1
         #Set different inputs for different types of files
@@ -166,10 +167,10 @@ def autofilet():
                 #Call IDL routine autofilet with the appropriate inputs
                 while not success:
                     nloop += 1
-                    sys.stdout = autofilet_log
+                    #sys.stdout = autofilet_log
                     write_idl_file(ifile, output_file, table_file, extn, xord, yord)
                     autofilet_call = subprocess.Popen('/grp/software/Linux/itt/idl/idl81/bin/idl -quiet tmp_idl.pro', shell = True) 
-                    sys.stdout = sys.__stdout__                
+                    #sys.stdout = sys.__stdout__                
                     nwait = 0
                     while autofilet_call.poll() is None:  #if the code hasn't finished in 3 minutes, terminate it 
                         time.sleep(30)
@@ -183,6 +184,7 @@ def autofilet():
                             # 6 15           <-- if a hang occurs, retry with    6 17 ,   7 15 ,   7 16
 
                             #autofilet_log = open('autofilet.log', 'a', 0)
+                            autofilet_log = open('autofilet.log', 'a', 0)
                             autofilet_log.write('ERROR: %s, ext = %i xord = %i yord = %i was terminated because autofilet had not finished after 3 minutes, no output written. \n' %(ifile, extn, xord, yord))
                             
                             if (xord == 15) and (yord == 4):
@@ -230,6 +232,7 @@ def autofilet():
         
                             autofilet_log.write('\tTrying again with xord = %i, yord = %i. \n' %(xord, yord))
                             autofilet_log.flush()
+                            autofilet_log.close()
                             success = False
                             print 'while_loop', nloop, ifile, extn, xord, yord
                         
@@ -239,7 +242,7 @@ def autofilet():
                     autofilet_call.wait()
 
                 
-    autofilet_log.close()
+    #autofilet_log.close()
     inventory.close()
  
 def build_inventory():
