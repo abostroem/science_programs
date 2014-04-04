@@ -10,6 +10,10 @@ from matplotlib import pyplot
 import pdb
 from matplotlib.backends.backend_pdf import PdfPages
 import math
+import subprocess
+from astropy.io import ascii
+from astropy.table import Table
+
 #Determine WFC3 PSF
 
 import numpy as np
@@ -240,7 +244,7 @@ def plot_final_stars(image_file_stis, image_file_wfc3, output_file):
     ax_stis = fig.add_subplot(1, 2, 1)
     ax_wfc3 = fig.add_subplot(1, 2, 2)
     img_stis = fits.getdata(image_file_stis, 0)
-    id, x_coords_stis, y_coords_stis, x_coords_wfc3, y_coords_wfc3, mag = np.genfromtxt(output_file, unpack = True) 
+    id, x_coords_stis, y_coords_stis, x_coords_wfc3, y_coords_wfc3, mag = np.genfromtxt(output_file, unpack = True, usecols = [0, 1, 2, 3, 4, 5]) 
     img_wfc3 = fits.getdata(image_file_wfc3, 0)    
     im_plot_stis = ax_stis.imshow(img_stis, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 200, aspect = 'auto')
     im_plot_wfc3 = ax_wfc3.imshow(img_wfc3, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 200, aspect = 'auto')
@@ -341,6 +345,257 @@ def make_offset_histograms(output_file):
     pyplot.savefig('delta_y_3936.pdf')
     pyplot.close()
 
+
+def make_input_match_catalog(output_file, wfc3_img, wfpc2_img):
+    id_wfc3, x_coords_wfc3, y_coords_wfc3, mag_wfc3, slit = np.genfromtxt(output_file, unpack = True, usecols = [0, 3, 4, 5, 6])
+    id_wfpc2, x_coords_wfpc2, y_coords_wfpc2, mag_wfpc2 = np.genfromtxt('/Users/bostroem/science/multispec/multi_spec_files/hunter_ApJ1995_488_179.dat', unpack = True, usecols = [0, 1, 2, 3])
+    indx1 = np.argsort(mag_wfpc2)
+    indx2 = [(x_coords_wfpc2[indx1] > 300) & (x_coords_wfpc2[indx1] < 430) & (mag_wfpc2[indx1] < 90.)]
+    indx = indx1[indx2]
+    fig = pyplot.figure()
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax2 = fig.add_subplot(1, 2, 2)
+    im1 = ax1.imshow(fits.getdata(wfc3_img, 0), cmap = 'bone', vmin = 0, vmax = 50)
+    im2 = ax2.imshow(fits.getdata(wfpc2_img, 1), cmap = 'bone', vmin = 0, vmax = 50)
+    ax1.plot(x_coords_wfc3-1, y_coords_wfc3-1, 'r.')
+    ax2.plot(x_coords_wfpc2[indx]-1, y_coords_wfpc2[indx]-1, 'r.')
+    ax2.set_xlim(300, 430)
+    for x, y, id in zip(x_coords_wfc3, y_coords_wfc3, id_wfc3):
+        ax1.text(x, y, id, color = 'c')
+    for x, y, id in zip(x_coords_wfpc2[indx], y_coords_wfpc2[indx], id_wfpc2[indx]):
+        ax2.text(x, y, id, color = 'c')
+    pyplot.draw()
+    with open('geomap_input.dat', 'w') as ofile:
+        id_new_star = raw_input('ID stars? ')
+        while id_new_star is not 'n':
+            wfc3_id = float(raw_input('Enter the WFC3 star ID '))
+            wfpc2_id = float(raw_input('Enter the WFPC2 star ID '))
+            wfc3_indx = [id_wfc3 == wfc3_id]
+            wfpc2_indx = [id_wfpc2 == wfpc2_id]
+            ofile.write('{}\t{}\t{}\t{}\n'.format(x_coords_wfc3[wfc3_indx][0], y_coords_wfc3[wfc3_indx][0], x_coords_wfpc2[wfpc2_indx][0], y_coords_wfpc2[wfpc2_indx][0]))
+            id_new_star = raw_input('ID more stars? ')
+        pyplot.close()
+
+
+def get_nearest_obj(x_coords_wfpc2, y_coords_wfpc2, x_wfpc2, y_wfpc2, mag_wfpc2):
+    dist = np.sqrt((x_coords_wfpc2 - x_wfpc2)**2 + (y_coords_wfpc2 - y_wfpc2)**2)
+    max_dist = 2
+    nearby_indx = np.where(dist < 2)[0]
+    if np.min(dist) > 2:
+        return None
+    while len(nearby_indx) == 0:
+        max_dist +=1
+        nearby_indx = np.where(dist < max_dist)[0]
+        pdb.set_trace()
+    brightest_indx = np.argmin(mag_wfpc2[nearby_indx])
+    return nearby_indx[brightest_indx]
+
+
+def get_hunter_id_numbers(output_file, wfc3_img, wfpc2_img):
+    #make_input_match_catalog(output_file, wfc3_img, wfpc2_img)
+    import iraf
+    from pyraf import iraf
+    from iraf import images,immatch,geomap as geomap
+    from iraf import images,immatch,geoxytran as geoxytran
+    id_wfc3, x_coords_wfc3, y_coords_wfc3, mag_wfc3, slit = np.genfromtxt(output_file, unpack = True, usecols = [0, 3, 4, 5, 6])
+    geomap('geomap_input.dat', 'geomap_output.txt', 0, 70, 0, 1024, interactive = False)
+    data = Table([x_coords_wfc3, y_coords_wfc3], names = ['x', 'y'])
+    ascii.write(data, 'wfc3_coord_list.tab', format = 'no_header')
+    if os.path.exists(os.path.join(os.getcwd(), 'wfpc2_coord_from_geoxytran.dat')):
+        os.remove(os.path.join(os.getcwd(), 'wfpc2_coord_from_geoxytran.dat'))
+    geoxytran( input = 'wfc3_coord_list.tab', output = 'wfpc2_coord_from_geoxytran.dat', database = 'geomap_output.txt', transforms = 'geomap_input.dat')
+    x_coords_wfpc2_guess, y_coords_wfpc2_guess = np.genfromtxt('wfpc2_coord_from_geoxytran.dat', unpack = True)
+    fig = pyplot.figure()
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax2 = fig.add_subplot(1, 2, 2)
+    im1 = ax1.imshow(fits.getdata(wfc3_img, 0), cmap = 'bone', vmin = 0, vmax = 50)
+    im2 = ax2.imshow(fits.getdata(wfpc2_img, 1), cmap = 'bone', vmin = 0, vmax = 50)
+    ax1.plot(x_coords_wfc3-1, y_coords_wfc3-1, 'r.')
+    ax2.plot(x_coords_wfpc2_guess-1, y_coords_wfpc2_guess-1, 'r.')
+    ax2.set_xlim(300, 430)
+    for x, y, id in zip(x_coords_wfc3, y_coords_wfc3, id_wfc3):
+        ax1.text(x, y, id, color = 'c')
+    for x, y, id in zip(x_coords_wfpc2_guess, y_coords_wfpc2_guess, id_wfc3):
+        ax2.text(x, y, id, color = 'c')
+    hunter_id = []
+    hunter_mag = []
+    hunter_x_coords = []
+    hunter_y_coords = []
+    id_wfpc2, x_coords_wfpc2, y_coords_wfpc2, mag_wfpc2 = np.genfromtxt('/Users/bostroem/science/multispec/multi_spec_files/hunter_ApJ1995_488_179.dat', unpack = True, usecols = [0, 1, 2, 3])
+    for i, x_wfpc2, y_wfpc2 in zip(range(len(x_coords_wfc3)), x_coords_wfpc2_guess, y_coords_wfpc2_guess):
+        if (y_wfpc2 < 40) | (y_wfpc2 > 800): #Outside the range of the WFPC2 image
+            hunter_id.append('J{}'.format(id_wfc3[i]))
+            hunter_mag.append(mag_wfc3[i])
+            hunter_x_coords.append(0)
+            hunter_y_coords.append(0)
+        else:
+            indx = get_nearest_obj(x_coords_wfpc2, y_coords_wfpc2, x_wfpc2, y_wfpc2, mag_wfpc2)
+            if indx:
+                hunter_id.append('H{}'.format(id_wfpc2[indx]))
+                hunter_mag.append(mag_wfpc2[indx])
+                hunter_x_coords.append(x_coords_wfpc2[indx])
+                hunter_y_coords.append(y_coords_wfpc2[indx])
+            else:
+                hunter_id.append('J{}'.format(id_wfc3[i]))
+                hunter_mag.append(mag_wfc3[i])
+                hunter_x_coords.append(0)
+                hunter_y_coords.append(0)
+    hunter_id = np.array(hunter_id)
+    hunter_mag = np.array(hunter_mag)
+    hunter_x_coords = np.array(hunter_x_coords)
+    hunter_y_coords = np.array(hunter_y_coords)
+    output_table = Table([hunter_id, x_coords_wfc3, y_coords_wfc3, hunter_x_coords, hunter_y_coords, hunter_mag, slit], names = ['id', 'wfc3_x', 'wfc3_y', 'wfpc2_x', 'wfpc2_y', 'mag', 'slit'])
+    ascii.write(output_table, 'final_list_w_hunter_id.dat', format = 'fixed_width')
+
+
+def plot_final_star_match(image_file_wfc3, image_file_wfpc2, coord_file):
+    '''
+    Plots the final output catalog from make_multispec_output. It steps through the y-axis to give you enough zoom to see the sources.
+    The output is saved as final_star_locations_3936.pdf
+    '''
+    fig = pyplot.figure(figsize = [15, 10])
+    ax_wfc3 = fig.add_subplot(1, 2, 1)
+    ax_wfpc2 = fig.add_subplot(1, 2, 2)
+    img_wfc3 = fits.getdata(image_file_wfc3, 0)
+    table_data = ascii.read(coord_file) 
+    x_coords_wfc3 = table_data['wfc3_x'].data
+    y_coords_wfc3 = table_data['wfc3_y'].data
+    x_coords_wfpc2 = table_data['wfpc2_x'].data
+    y_coords_wfpc2 = table_data['wfpc2_y'].data
+    id = table_data['id'].data
+    img_wfpc2 = fits.getdata(image_file_wfpc2, 1)    
+    im_plot_wfc3 = ax_wfc3.imshow(img_wfc3, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 200, aspect = 'auto')
+    im_plot_wfpc2 = ax_wfpc2.imshow(img_wfpc2, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 40, aspect = 'auto')
+    ax_wfc3.plot(x_coords_wfc3 -1, y_coords_wfc3-1, '+', markerfacecolor = 'none', markeredgecolor = 'r', markeredgewidth = 2, linestyle = 'none', markersize = 10) 
+    ax_wfpc2.plot(x_coords_wfpc2-1, y_coords_wfpc2-1, '+', markerfacecolor = 'none', markeredgecolor = 'r', markeredgewidth = 2, linestyle = 'none', markersize = 10)
+    for i, x, y in zip(id, x_coords_wfc3, y_coords_wfc3):
+        ax_wfc3.text(x, y, i, color = 'r')
+    pyplot.draw()
+    for i, x, y in zip(id, x_coords_wfpc2, y_coords_wfpc2):
+        ax_wfpc2.text(x, y, i, color = 'r')
+    pyplot.draw()
+    lower_lim = 900
+    ax_wfpc2.set_xlim(335, 425)
+    pp = PdfPages('star_match_wfc3_wfpc2_locations_3936.pdf')
+    ax_wfc3.set_title('WFC3 Cropped Image')
+    ax_wfpc2.set_title('WFPC2 Image')
+    while lower_lim > 0:
+        print lower_lim
+        ax_wfc3.set_ylim(lower_lim, lower_lim+150)
+        ax_wfpc2.set_ylim((min(705,lower_lim-160))*1.1, (lower_lim-160+150)*1.1)
+        pyplot.draw()
+        raw_input('Press enter to move down slit')
+        pp.savefig()
+        lower_lim = lower_lim - 150
+    pp.close()
+    pyplot.close()
+
+
+    
+    
+'''
+
+def get_hunter_id_numbers(output_file, wfc3_img, wfpc2_img):
+    id, x_coords_wfc3, y_coords_wfc3, mag, slit = np.genfromtxt(output_file, unpack = True, usecols = [0, 3, 4, 5, 6])
+    indx = np.argsort(mag)
+    data = Table([x_coords_wfc3[indx], y_coords_wfc3[indx], mag[indx]], names = ['x', 'y', 'mag'])
+    ascii.write(data, 'wfc3_starmatch.tab')
+    id_wfpc2, x_coords_wfpc2, y_coords_wfpc2, mag_wfpc2 = np.genfromtxt('/Users/bostroem/science/multispec/multi_spec_files/hunter_ApJ1995_488_179.dat', unpack = True, usecols = [0, 1, 2, 3])
+    indx = np.argsort(mag_wfpc2)
+    data = Table([x_coords_wfpc2[indx][(x_coords_wfpc2[indx] > 300) & (x_coords_wfpc2[indx] < 430) & (mag_wfpc2[indx] < 90.)], 
+                  y_coords_wfpc2[indx][(x_coords_wfpc2[indx] > 300) & (x_coords_wfpc2[indx] < 430) & (mag_wfpc2[indx] < 90.)], 
+                  mag_wfpc2[indx][(x_coords_wfpc2[indx] > 300) & (x_coords_wfpc2[indx] < 430) & (mag_wfpc2[indx] < 90.)]], names = ['x', 'y', 'mag'])
+    ascii.write(data, 'wfpc2_starmatch.tab')
+    #WFPC2 chip 1 has platescale = 0.045
+    #STIS G430M plate scale = 0.05078 arcsec/pix
+    #scaleratio = 0.045/0.05078
+    #scaleratio = 0.05078/0.045
+    for scaleratio in np.arange(0.8, 1.2, 0.01):
+        print scaleratio
+        #scaleratio = 0
+        tolerance = 0.005
+        needthismanystars = 3
+        nummatches = 50
+        process_obj = subprocess.Popen('/user/bostroem/science/programs/snsearch/bin/starmatch {}/wfc3_starmatch.tab {}/wfpc2_starmatch.tab {} {} 1 {} {}'.format(os.getcwd(), os.getcwd(), scaleratio, tolerance, needthismanystars, nummatches), shell = True, stdout = subprocess.PIPE)
+        shell_output = process_obj.communicate()[0].split()
+        print shell_output
+        try:
+            a, b, c, d, e, f = shell_output
+        except ValueError:
+            pass
+    a = float(a)
+    b = float(b)
+    c = float(c)
+    d = float(d)
+    e = float(e)
+    f = float(f)
+    
+    wfpc2_x_coord_guess = a*x_coords_wfc3 + b*y_coords_wfc3 + c
+    wfpc2_y_coord_guess = d*x_coords_wfc3 + e*y_coords_wfc3 + f
+    wfpc2_x_coord_guessi = (1./(a*e - b*d))*(e*(x_coords_wfc3 - c) - b*(y_coords_wfc3-f))
+    wfpc2_y_coord_guessi = (1./(a*e - b*d))* (-d*(x_coords_wfc3 - c) + a*(y_coords_wfc3 - f))
+    wfpc2_id = []
+    wfpc2_mag = []
+    #Confirm on image
+    fig = pyplot.figure()
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax2 = fig.add_subplot(1, 2, 2)
+    im1 = ax1.imshow(fits.getdata(wfc3_img, 0), cmap = 'bone', vmin = 0, vmax = 50)
+    im2 = ax2.imshow(fits.getdata(wfpc2_img, 1), cmap = 'bone', vmin = 0, vmax = 50)
+    ax2.plot(wfpc2_x_coord_guess, wfpc2_y_coord_guess, 'm.')
+    ax2.plot(wfpc2_x_coord_guessi, wfpc2_y_coord_guessi, 'c.')
+    pdb.set_trace()
+    ax2.set_title('scaleratio = {}, tol = {}, 1, needthismanystars = {}, nummatches =  {}'.format(scaleratio, tolerance, needthismanystars, nummatches))
+    pyplot.savefig('eval_linear_transform{}_{}_1_{}_{}.pdf'.format(scaleratio, tolerance, needthismanystars, nummatches))
+    import sys
+    sys.exit()
+
+    for x, y, xwfc3, ywfc3  in zip(wfpc2_x_coord_guess, wfpc2_y_coord_guess, x_coords_wfc3, y_coords_wfc3):
+        match_indx = np.argmin((x_coords_wfpc2 - x)**2 + (y_coords_wfpc2 - y)**2)
+        wfpc2_id.append(id_wfpc2[match_indx])
+        wfpc2_mag.append(mag_wfpc2[match_indx])
+        ax1.plot(xwfc3-1, ywfc3-1, 'co')
+        ax2.plot(x_coords_wfpc2[match_indx]-1, y_coords_wfpc2[match_indx]-1, 'r.')
+        pyplot.draw()
+        #ax1.set_xlim(xwfc3 - 40, xwfc3 + 40)
+        #ax1.set_ylim(ywfc3 - 40, ywfc3 + 40)
+        #ax2.set_xlim(x_coords_wfpc2[match_indx] - 40, x_coords_wfpc2[match_indx] + 40)
+        #ax2.set_ylim(y_coords_wfpc2[match_indx] - 40, y_coords_wfpc2[match_indx]+ 40)
+        reset_contrast = raw_input('reset contrast? ')
+        while reset_contrast is not 'n':
+            new_max = raw_input('Enter new contrast ')
+            im1.set_clim(0, float(new_max))
+            im2.set_clim(0, float(new_max))
+            pyplot.draw()
+            reset_contrast = raw_input('reset contrast? ')
+        ax1.plot(xwfc3-1, ywfc3-1, 'go')
+        ax2.plot(x_coords_wfpc2[match_indx]-1, y_coords_wfpc2[match_indx]-1, 'g.')
+        
+    wfpc2_id = np.array(wfpc2_id)
+    wfpc2_mag = np.array(wfpc2_mag)
+    output_table = Table([wfpc2_id, id, x_coords_wfc3, y_coords_wfc3, wfpc2_mag, slit], names = ['wfpc2_id', 'wfc3_id', 'wfc3_X', 'wfc3_y', 'wfpc2_mag', 'slit'])
+    ascii.write(output_table, 'final_list_w_hunter_id.dat', format = 'fixed_width')
+    pdb.set_trace()
+'''
+def generate_multispec_input(coord_file, slit_num):
+    table_data = ascii.read(coord_file)
+    indx = np.where(table_data['slit'].data == slit_num)[0]
+    e = np.ones((len(indx),))*0.400
+    x = np.ones((len(indx),))*511.5
+    ra = np.zeros((len(indx),))
+    dec = np.zeros((len(indx),))
+    sed = ['kurucz_30000_ms_z0.fits']*len(indx)
+    slit_id = table_data['id'].data[indx]
+    slit_y = table_data['wfc3_y'].data[indx]-1.
+    slit_mag = table_data['mag'].data[indx]
+    data = Table([slit_id, x, slit_y, ra, dec, sed, e, slit_mag], names = ['ID', 'x', 'y', 'RA', 'DEC', 'sed', 'e(4405-5495)', 'wfpc2_f336w'])
+    if slit_num < 10:
+        ascii.write(data, 'slit0{}_phot.dat'.format(slit_num), format = 'tab')
+    else:
+        ascii.write(data, 'slit{}_phot.dat'.format(slit_num), format = 'tab')
+    
+    
+
 if __name__ == "__main__":
     os.chdir('/Users/bostroem/science/multispec/ccd_multispec')
     salgorithm = 'centroid'
@@ -398,4 +653,14 @@ if __name__ == "__main__":
     #-----------------------------
     #Create a histogram of the offset in X and Y
     #-----------------------------
-    make_offset_histograms('stis_wfc3_coords_mag.dat')
+    #make_offset_histograms('stis_wfc3_coords_mag.dat')
+
+    #-----------------------------
+    #Make multispec input files
+    #-----------------------------
+    #get_hunter_id_numbers('stis_wfc3_coords_mag.dat', 'f336w_63.5_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits')
+    #plot_final_star_match('f336w_63.5_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits', 'final_list_w_hunter_id.dat')
+    for i in range(1, 17, 1):
+        generate_multispec_input('final_list_w_hunter_id.dat', i)
+
+
