@@ -13,6 +13,7 @@ import math
 import subprocess
 from astropy.io import ascii
 from astropy.table import Table
+import shutil
 
 #Determine WFC3 PSF
 
@@ -130,7 +131,7 @@ def confirm_daophot(image_file_stis, image_file_wfc3, magh_file_stis, magh_file_
         raw_input('Press enter to move down slit')
         lower_lim = lower_lim - 150
 
-def run_daofind_on_wfc3(image = 'f336w_63.5_cropped.fits', output_find_file = 'daofind_output_wfc3.coo'):
+def run_daofind_on_wfc3(image = 'f336w_63.7_cropped.fits', output_find_file = 'daofind_output_wfc3.coo'):
     '''
     Run DAOFIND on the WFC3 image to get coordinates. Produces a file called daofind_output_wfc3.coo. This 
     overwrites a previous file by default
@@ -318,6 +319,13 @@ def check_for_drift_during_visit(output_file):
     pyplot.draw()
     raw_input('Press Enter to finish')
     pyplot.savefig('drift_3936.pdf')
+    apply_drift = raw_input('Apply drift correction? ')
+    if apply_drift == 'y':
+        shutil.move(output_file, os.path.splitext(output_file)[0]+'_uncorrected'+os.path.splitext(output_file)[1])
+        y_coords_stis[slit<10] = y_coords_stis[slit<10] + fit_coeff_se[0]*slit[slit<10] + fit_coeff_se[1]
+        y_coords_stis[slit>=10] = y_coords_stis[slit>=10] + fit_coeff_nw[0]*slit[slit>=10] + fit_coeff_nw[1]
+        table_data = Table([id, x_coords_stis, y_coords_stis, x_coords_wfc3, y_coords_wfc3, mag, slit], names = ['ID', 'X-STIS', 'Y-STIS', 'X-WFC3', 'Y-WFC3', 'WFC3-Mag-APER= 2', 'SLIT'])
+        ascii.write(table_data, output_file, format = 'commented_header')
 
 def make_offset_histograms(output_file):
     '''
@@ -499,7 +507,7 @@ def generate_multispec_input(coord_file, slit_num):
     dec = np.zeros((len(indx),))
     sed = ['kurucz_30000_ms_z0.fits']*len(indx)
     slit_id = table_data['id'].data[indx]
-    slit_y = table_data['wfc3_y'].data[indx]-1.
+    slit_y = table_data['wfc3_y'].data[indx]-1.  #Change from DAOFIND indexing (center of pixel at 1) to IDL indexing (center of pixel at 0)
     slit_mag = table_data['mag'].data[indx]
     data = Table([slit_id, x, slit_y, ra, dec, sed, e, slit_mag], names = ['ID', 'x', 'y', 'RA', 'DEC', 'sed', 'e(4405-5495)', 'wfpc2_f336w'])
     if slit_num < 10:
@@ -513,7 +521,7 @@ if __name__ == "__main__":
     os.chdir('/Users/bostroem/science/multispec/ccd_multispec')
     salgorithm = 'centroid'
     #Determine WFC3 PSF
-    img = fits.getdata('f336w_63.5_cropped.fits', 0)
+    img = fits.getdata('f336w_63.7_cropped.fits', 0)
     #-----------------------------
     #Find PSF
     #-----------------------------
@@ -527,26 +535,27 @@ if __name__ == "__main__":
     #Create Coordinate List
     #-----------------------------
     #run_daofind_on_wfc3()
-    #find_stars_daofind_missed('daofind_output_wfc3.coo', 'f336w_63.5_cropped.fits' , ext = 0)
+    #find_stars_daofind_missed('daofind_output_wfc3.coo', 'f336w_63.7_cropped.fits' , ext = 0)
     #Get photometry and STIS image locations
-    #run_daophot('f336w_63.5_cropped.fits', salgorithm = salgorithm)
+    #run_daophot('f336w_63.7_cropped.fits', salgorithm = salgorithm)
     #run_daophot('long_slit_img_3936.fits', maxshift = 4.0, salgorithm = salgorithm)
 
     #-----------------------------
     #Check photometry results
     #-----------------------------
-    #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.5_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.5_cropped_{}.magh'.format(salgorithm))
-    #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.5_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.5_cropped_{}.magh'.format(salgorithm), vmin = 0, vmax = 800)
+    #print "Inspect where DAOPHOT found stars, duplicates will be removed later"
+    #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm))
+    #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm), vmin = 0, vmax = 800)
 
     #-----------------------------
     #Create Multispec Output file
     #-----------------------------
-    #make_multispec_output('long_slit_img_3936.fits', 'f336w_63.5_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.5_cropped_{}.magh'.format(salgorithm))
+    #make_multispec_output('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm))
 
     #-----------------------------
     #Check final locations
     #-----------------------------
-    #plot_final_stars('long_slit_img_3936.fits', 'f336w_63.5_cropped.fits', 'stis_wfc3_coords_mag.dat')
+    #plot_final_stars('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'stis_wfc3_coords_mag.dat')
 
     #-----------------------------
     #Test distortion
@@ -561,18 +570,18 @@ if __name__ == "__main__":
     #-----------------------------
     #Check for drifts from exposure to exposure
     #-----------------------------
-    #check_for_drift_during_visit('stis_wfc3_coords_mag.dat')
+    check_for_drift_during_visit('stis_wfc3_coords_mag.dat')
 
     #-----------------------------
     #Create a histogram of the offset in X and Y
     #-----------------------------
-    #make_offset_histograms('stis_wfc3_coords_mag.dat')
+    make_offset_histograms('stis_wfc3_coords_mag.dat')
 
     #-----------------------------
     #Make multispec input files
     #-----------------------------
-    #get_hunter_id_numbers('stis_wfc3_coords_mag.dat', 'f336w_63.5_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits')
-    #plot_final_star_match('f336w_63.5_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits', 'final_list_w_hunter_id.dat')
+    get_hunter_id_numbers('stis_wfc3_coords_mag.dat', 'f336w_63.7_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits')
+    plot_final_star_match('f336w_63.7_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits', 'final_list_w_hunter_id.dat')
     for i in range(1, 17, 1):
         generate_multispec_input('final_list_w_hunter_id.dat', i)
 
