@@ -37,8 +37,6 @@ def fit_single_gauss_func(x, a0, a1, a2):
     y = a0 * np.exp(-z**2 / a2) 
     return y
  
-
-
 def find_psf(ycenter, xmin):
     '''
     Collapse data along the X axis and fit the profile to get an estimate of the PSF width
@@ -71,7 +69,7 @@ def find_stars_daofind_missed(coord_file, image, ext = 0):
         img = fits.getdata(image, ext)
         fig = pyplot.figure()
         ax = fig.add_subplot(1, 1, 1)
-        im_plot = ax.imshow(img, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 100)
+        im_plot = ax.imshow(img, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 50)
         x_coords, y_coords, mag = np.genfromtxt(coord_file, unpack = 'true', usecols = [0, 1, 2])
         ax.plot(x_coords[mag < -4] - 1, y_coords[mag < -4] - 1 , 'o', markerfacecolor = 'none', markeredgecolor = 'lime', markeredgewidth = 2, linestyle = 'none')
         ax.set_ylim(900, 1040)
@@ -101,12 +99,13 @@ def find_stars_daofind_missed(coord_file, image, ext = 0):
             ax.plot(x, y, 'o', markerfacecolor = 'none', markeredgecolor = 'lime', markeredgewidth = 2, linestyle = 'none')
             pyplot.draw()
     
-def confirm_daophot(image_file_stis, image_file_wfc3, magh_file_stis, magh_file_wfc3, ext_stis = 0, ext_wfc3 = 0, vmin = 0, vmax = 100):
+def confirm_daophot(image_file_stis, image_file_wfc3, magh_file_stis, magh_file_wfc3, ext_stis = 0, ext_wfc3 = 0, vmin = 0, vmax = 50):
     '''
     Plots the STIS and WFC3 images side by side and the star locations of stars found by DAOPHOT. 
     '''
     img_stis = fits.getdata(image_file_stis, ext_stis)
-    x_coords_stis, y_coords_stis, id_stis, mag = np.genfromtxt(magh_file_stis, usecols = [1, 2, 3, 37], unpack = True, missing = 'INDEF', missing_values = np.nan) 
+    x_coords_stis, y_coords_stis, id_stis, mag = np.genfromtxt(magh_file_stis, usecols = [1, 2, 3, 37], unpack = True, missing = 'INDEF', missing_values = np.nan)
+    pp = PdfPages('confirm_daophot_locations_3936.pdf') 
     fig = pyplot.figure(figsize = [25, 15])
     ax_stis = fig.add_subplot(1, 2, 1)
     im_plot_stis = ax_stis.imshow(img_stis, interpolation = 'none', cmap = 'bone', vmin = vmin, vmax = vmax)
@@ -128,9 +127,10 @@ def confirm_daophot(image_file_stis, image_file_wfc3, magh_file_stis, magh_file_
         ax_stis.set_ylim(lower_lim, lower_lim+150)
         ax_wfc3.set_ylim(lower_lim, lower_lim+150)
         pyplot.draw()
+        pp.savefig()
         raw_input('Press enter to move down slit')
         lower_lim = lower_lim - 150
-
+    pp.close()
 def run_daofind_on_wfc3(image = 'f336w_63.7_cropped.fits', output_find_file = 'daofind_output_wfc3.coo'):
     '''
     Run DAOFIND on the WFC3 image to get coordinates. Produces a file called daofind_output_wfc3.coo. This 
@@ -143,7 +143,7 @@ def run_daofind_on_wfc3(image = 'f336w_63.7_cropped.fits', output_find_file = 'd
     apphot.datapars.unlearn()
     #Datapars
     apphot.datapars.scale = 1.0
-    apphot.datapars.fwhmpsf = 1.8  #this is a really important parameter
+    apphot.datapars.fwhmpsf = 2.0  #this is a really important parameter
     apphot.datapars.sigma = 0.1
     apphot.datapars.datamin = 0
     apphot.datapars.ccdread = ""
@@ -156,12 +156,12 @@ def run_daofind_on_wfc3(image = 'f336w_63.7_cropped.fits', output_find_file = 'd
     apphot.findpars.sharplo = 0.2
     apphot.findpars.sharphi = 10.0
     apphot.findpars.roundlo = -1.0
-    apphot.findpars.roundhi = 1.0
+    apphot.findpars.roundhi = 2.0
     if os.path.exists(os.path.join(os.getcwd(), output_find_file)):
         os.remove(os.path.join(os.getcwd(), output_find_file))
     daofind(image = image, output = output_find_file)
 
-def run_daophot(image, coord_file = 'daofind_output_wfc3.coo', salgorithm = 'mode', output_mag_file = None, output_mag_humanreadable = None, apertures = None, maxshift = 1.0):
+def run_daophot(image, coord_file = 'daofind_output_wfc3.coo', salgorithm = 'median', output_mag_file = None, output_mag_humanreadable = None, apertures = None, maxshift = 1.0):
     '''
     Run DAOPHOT on an image given a coordinate list (coord_file). Apertures, salgorithm, and maxshift are used
     as input parameters to DAOPHOT. This program overwrites an existing file by default
@@ -187,7 +187,7 @@ def run_daophot(image, coord_file = 'daofind_output_wfc3.coo', salgorithm = 'mod
     apphot.pconvert(textfile = output_mag_file, table = output_mag_humanreadable, fields = 'IMAGE, XCENTER, YCENTER, ID, XINIT, YINIT, RAPERT, SUM, FLUX, MAG, MSKY')
 
 
-def make_multispec_output(image_file_stis, image_file_wfc3, magh_file_stis, magh_file_wfc3, ext_stis = 0, ext_wfc3 = 0):
+def match_stis_wfc3_stars(image_file_stis, image_file_wfc3, magh_file_stis, magh_file_wfc3, ext_stis = 0, ext_wfc3 = 0):
     '''
     Steps through each object found by DAOPHOT in which the magnitude is not INDEF and is less than 25. The
     Users is asked to verify that the same star was found in both STIS and WFC3 images. If this is the case
@@ -203,7 +203,7 @@ def make_multispec_output(image_file_stis, image_file_wfc3, magh_file_stis, magh
     x_coords_wfc3, y_coords_wfc3, id_wfc3, mag = np.genfromtxt(magh_file_wfc3, usecols = [1, 2, 3, 37], unpack = True, missing = 'INDEF', missing_values = np.nan) 
     im_plot_stis = ax_stis.imshow(img_stis, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 50)
     im_plot_wfc3 = ax_wfc3.imshow(img_wfc3, interpolation = 'none', cmap = 'bone', vmin = 0, vmax = 50)
-    indx = mag < 25
+    indx = mag < 30
     with open('stis_wfc3_coords_mag.dat', 'w') as ofile:
         ofile.write('#ID\tX-STIS\tY-STIS\tX-WFC3\tY-WFC3\tWFC3-Mag-APER= 2\n')
         for ids, idw, xs, xw, ys, yw, m in zip(id_stis[indx], id_wfc3[indx], x_coords_stis[indx], x_coords_wfc3[indx], y_coords_stis[indx], y_coords_wfc3[indx], mag[indx]):
@@ -271,6 +271,7 @@ def add_slit(output_file):
     '''
     with open(output_file, 'r') as ofile:
         all_lines = ofile.readlines()
+    shutil.move(output_file, os.path.splitext(output_file)[0]+'_without_slit'+os.path.splitext(output_file)[1])
     with open(output_file, 'w') as ofile:
         ofile.write('#ID	X-STIS	Y-STIS	X-WFC3	Y-WFC3	WFC3-Mag-APER= 2    SLIT')
         for iline in all_lines[1:]:
@@ -360,7 +361,7 @@ def make_input_match_catalog(output_file, wfc3_img, wfpc2_img):
     indx1 = np.argsort(mag_wfpc2)
     indx2 = [(x_coords_wfpc2[indx1] > 300) & (x_coords_wfpc2[indx1] < 430) & (mag_wfpc2[indx1] < 90.)]
     indx = indx1[indx2]
-    fig = pyplot.figure()
+    fig = pyplot.figure(figsize = [15, 15])
     ax1 = fig.add_subplot(1, 2, 1)
     ax2 = fig.add_subplot(1, 2, 2)
     im1 = ax1.imshow(fits.getdata(wfc3_img, 0), cmap = 'bone', vmin = 0, vmax = 50)
@@ -372,16 +373,22 @@ def make_input_match_catalog(output_file, wfc3_img, wfpc2_img):
         ax1.text(x, y, id, color = 'c')
     for x, y, id in zip(x_coords_wfpc2[indx], y_coords_wfpc2[indx], id_wfpc2[indx]):
         ax2.text(x, y, id, color = 'c')
+    ax1.set_ylim(700, 900)
+    ax2.set_ylim(600, 800)
     pyplot.draw()
     with open('geomap_input.dat', 'w') as ofile:
-        id_new_star = raw_input('ID stars? ')
-        while id_new_star is not 'n':
-            wfc3_id = float(raw_input('Enter the WFC3 star ID '))
-            wfpc2_id = float(raw_input('Enter the WFPC2 star ID '))
-            wfc3_indx = [id_wfc3 == wfc3_id]
-            wfpc2_indx = [id_wfpc2 == wfpc2_id]
-            ofile.write('{}\t{}\t{}\t{}\n'.format(x_coords_wfc3[wfc3_indx][0], y_coords_wfc3[wfc3_indx][0], x_coords_wfpc2[wfpc2_indx][0], y_coords_wfpc2[wfpc2_indx][0]))
-            id_new_star = raw_input('ID more stars? ')
+        print 'Enter n to exit'
+        wfc3_id = 'y'
+        while wfc3_id is not 'n':
+            try:
+                wfc3_id = float(raw_input('Enter the WFC3 star ID '))
+                wfpc2_id = float(raw_input('Enter the WFPC2 star ID '))
+                wfc3_indx = [id_wfc3 == wfc3_id]
+                wfpc2_indx = [id_wfpc2 == wfpc2_id]
+                ofile.write('{}\t{}\t{}\t{}\n'.format(x_coords_wfc3[wfc3_indx][0], y_coords_wfc3[wfc3_indx][0], x_coords_wfpc2[wfpc2_indx][0], y_coords_wfpc2[wfpc2_indx][0]))
+            except (IndexError, ValueError) as e:
+                print e.message
+                wfc3_id = 'n'
         pyplot.close()
 
 
@@ -406,12 +413,13 @@ def get_hunter_id_numbers(output_file, wfc3_img, wfpc2_img):
     from iraf import images,immatch,geomap as geomap
     from iraf import images,immatch,geoxytran as geoxytran
     id_wfc3, x_coords_wfc3, y_coords_wfc3, mag_wfc3, slit = np.genfromtxt(output_file, unpack = True, usecols = [0, 3, 4, 5, 6])
+    make_input_match_catalog(output_file, wfc3_img, wfpc2_img)
     geomap('geomap_input.dat', 'geomap_output.txt', 0, 70, 0, 1024, interactive = False)
     data = Table([x_coords_wfc3, y_coords_wfc3], names = ['x', 'y'])
     ascii.write(data, 'wfc3_coord_list.tab', format = 'no_header')
     if os.path.exists(os.path.join(os.getcwd(), 'wfpc2_coord_from_geoxytran.dat')):
         os.remove(os.path.join(os.getcwd(), 'wfpc2_coord_from_geoxytran.dat'))
-    geoxytran( input = 'wfc3_coord_list.tab', output = 'wfpc2_coord_from_geoxytran.dat', database = 'geomap_output.txt', transforms = 'geomap_input.dat')
+    geoxytran(input = 'wfc3_coord_list.tab', output = 'wfpc2_coord_from_geoxytran.dat', database = 'geomap_output.txt', transforms = 'geomap_input.dat')
     x_coords_wfpc2_guess, y_coords_wfpc2_guess = np.genfromtxt('wfpc2_coord_from_geoxytran.dat', unpack = True)
     fig = pyplot.figure()
     ax1 = fig.add_subplot(1, 2, 1)
@@ -515,7 +523,10 @@ def generate_multispec_input(coord_file, slit_num):
     else:
         ascii.write(data, 'slit{}_phot.dat'.format(slit_num), format = 'tab')
     
-    
+def print_to_screen(what_to_print):
+    print '#-----------------------------'
+    print what_to_print
+    print '#-----------------------------'
 
 if __name__ == "__main__":
     os.chdir('/Users/bostroem/science/multispec/ccd_multispec')
@@ -525,6 +536,9 @@ if __name__ == "__main__":
     #-----------------------------
     #Find PSF
     #-----------------------------
+    #print '#-----------------------------'
+    #print 'Analyzing PSF'
+    #sprint '#-----------------------------'
     #find_psf(654, 0)
     #find_psf(924, 16)
     #find_psf(315, 32)
@@ -534,8 +548,11 @@ if __name__ == "__main__":
     #-----------------------------
     #Create Coordinate List
     #-----------------------------
+    print_to_screen('run DAOFIND on WFC3 Image')
     #run_daofind_on_wfc3()
+    print_to_screen('Find stars DAOFIND missed')
     #find_stars_daofind_missed('daofind_output_wfc3.coo', 'f336w_63.7_cropped.fits' , ext = 0)
+    print_to_screen('run DAOPHOT on STIS and WFC3 images')
     #Get photometry and STIS image locations
     #run_daophot('f336w_63.7_cropped.fits', salgorithm = salgorithm)
     #run_daophot('long_slit_img_3936.fits', maxshift = 4.0, salgorithm = salgorithm)
@@ -543,45 +560,54 @@ if __name__ == "__main__":
     #-----------------------------
     #Check photometry results
     #-----------------------------
-    #print "Inspect where DAOPHOT found stars, duplicates will be removed later"
-    #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm))
+    #print_to_screen("Inspect where DAOPHOT found stars, duplicates will be removed later")
     #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm), vmin = 0, vmax = 800)
+    #print 'with a different contrast'
+    #confirm_daophot('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm))
 
     #-----------------------------
     #Create Multispec Output file
     #-----------------------------
-    #make_multispec_output('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm))
+    #print_to_screen('ID good matches between WFC3 and STIS stars')
+    #match_stis_wfc3_stars('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'long_slit_img_3936_{}.magh'.format(salgorithm), 'f336w_63.7_cropped_{}.magh'.format(salgorithm))
 
     #-----------------------------
     #Check final locations
     #-----------------------------
+    #print_to_screen('Plot final selection of stars')
     #plot_final_stars('long_slit_img_3936.fits', 'f336w_63.7_cropped.fits', 'stis_wfc3_coords_mag.dat')
-
-    #-----------------------------
-    #Test distortion
-    #-----------------------------
-    #test_stis_distortion('stis_wfc3_coords_mag.dat')
 
     #-----------------------------
     #Add in the slit number to the Multispec file
     #-----------------------------
+    #print_to_screen('Add slit number to output file')
     #add_slit('stis_wfc3_coords_mag.dat')
 
     #-----------------------------
     #Check for drifts from exposure to exposure
     #-----------------------------
-    check_for_drift_during_visit('stis_wfc3_coords_mag.dat')
+    #print_to_screen('Correct for drift within a visit')
+    #check_for_drift_during_visit('stis_wfc3_coords_mag.dat')
 
     #-----------------------------
     #Create a histogram of the offset in X and Y
     #-----------------------------
-    make_offset_histograms('stis_wfc3_coords_mag.dat')
+    #print_to_screen('Look for offsets between the images in x and y')
+    #make_offset_histograms('stis_wfc3_coords_mag.dat')
 
+    #-----------------------------
+    #Test distortion
+    #-----------------------------
+    #print_to_screen('Check for geometric distortion')
+    #test_stis_distortion('stis_wfc3_coords_mag.dat')
     #-----------------------------
     #Make multispec input files
     #-----------------------------
+
+    print_to_screen('Match WFC3 stars to WFPC2 Hunter stars')
     get_hunter_id_numbers('stis_wfc3_coords_mag.dat', 'f336w_63.7_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits')
     plot_final_star_match('f336w_63.7_cropped.fits', '/Users/bostroem/science/multispec/multi_spec_files/r136_f555w_wfpc2_images/u25y0105t_c0m.fits', 'final_list_w_hunter_id.dat')
+    print_to_screen('Make an _phot.dat file for each slit')
     for i in range(1, 17, 1):
         generate_multispec_input('final_list_w_hunter_id.dat', i)
 
